@@ -1,0 +1,14 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+  font-family: monospace;
+}
+
+.label {
+  font-style: italic;
+  color: gray;
+  padding-left: 10px;
+  padding-right: 10px;
+}
