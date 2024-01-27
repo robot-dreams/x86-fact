@@ -1,15 +1,25 @@
 import { useState } from "react";
 import "./App.css";
 
-const numInstructions = 18;
-const numStackWords = 20;
-const returnAddress = 0x1040;
-const stackTop = 0xff98;
-
 const offsets = [
   0x1000, 0x1004, 0x1009, 0x100f, 0x1015, 0x101e, 0x1023, 0x1028, 0x102d,
   0x1034, 0x1037, 0x103b, 0x1040, 0x1044, 0x1048, 0x104d, 0x1052, 0x1056,
 ];
+
+const numInstructions = 18;
+const numStackWords = 20;
+const returnAddress = 0x1040;
+const stackTop = 0xff98;
+const minAddress = offsets[0];
+
+const regTitles: { [reg: string]: string } = {
+  rip: "instruction pointer",
+  rsp: "stack pointer",
+  rdi: "1st argument",
+  rax: "return value",
+  rcx: "general purpose register",
+  zf: "zero flag (part of %rflags)",
+};
 
 const instructions = [
   "subq  $0x18, %rsp",
@@ -50,6 +60,7 @@ function newMachine(): Machine {
       rdi: 0x04,
       rax: 0x00,
       rcx: 0x00,
+      zf: 0,
     },
     stackWords: new Array(numStackWords).fill(0),
   };
@@ -73,6 +84,7 @@ function step(m: Machine) {
   switch (m.regs.rip) {
     case 0x1000:
       m.regs.rsp -= 0x18;
+      m.regs.zf = m.regs.rsp === 0 ? 1 : 0;
       m.regs.rip = 0x1004;
       break;
 
@@ -83,10 +95,11 @@ function step(m: Machine) {
 
     case 0x1009:
       m.regs.rip = 0x100f;
+      m.regs.zf = getStackWord(m, m.regs.rsp + 0x8) === 0 ? 1 : 0;
       break;
 
     case 0x100f:
-      if (getStackWord(m, m.regs.rsp + 0x8) != 0x0) {
+      if (m.regs.zf === 0) {
         m.regs.rip = 0x1023;
       } else {
         m.regs.rip = 0x1015;
@@ -114,6 +127,7 @@ function step(m: Machine) {
 
     case 0x102d:
       m.regs.rcx -= 0x1;
+      m.regs.zf = m.regs.rcx === 0 ? 1 : 0;
       m.regs.rip = 0x1034;
       break;
 
@@ -156,6 +170,7 @@ function step(m: Machine) {
 
     case 0x1052:
       m.regs.rsp += 0x18;
+      m.regs.zf = m.regs.rsp === 0 ? 1 : 0;
       m.regs.rip = 0x1056;
       break;
 
@@ -172,8 +187,13 @@ function step(m: Machine) {
 
 function StackRow({ machine, i }: { machine: Machine; i: number }) {
   const address = stackTop - 8 * i;
-  const word =
-    i === 0 ? "(caller)" : `0x${machine.stackWords[i - 1].toString(16)}`;
+  const word = machine.stackWords[i - 1];
+  const display =
+    i === 0
+      ? "(return address)"
+      : word >= minAddress
+      ? `0x${word.toString(16)}`
+      : word.toString();
   const wordStyle =
     address < machine.regs.rsp
       ? { backgroundColor: "ghostwhite", color: "lightgray" }
@@ -181,7 +201,7 @@ function StackRow({ machine, i }: { machine: Machine; i: number }) {
   return (
     <tr>
       <td className="label">{`0x${address.toString(16)}`}</td>
-      <td style={wordStyle}>{word}</td>
+      <td style={wordStyle}>{display}</td>
       <td className="label">{address === machine.regs.rsp && "<- %rsp"}</td>
     </tr>
   );
@@ -203,12 +223,12 @@ function StackMemory({ machine }: { machine: Machine }) {
           <th colSpan={3}>
             Stack Memory{" "}
             <button
-              style={{ fontSize: 18, padding: 5 }}
+              style={{ padding: 0 }}
               onClick={() => {
                 setReverse(!reverse);
               }}
             >
-              &#x21D5;
+              &nbsp;&#x21D5;&nbsp;
             </button>
           </th>
         </tr>
@@ -222,10 +242,14 @@ function Registers({ machine }: { machine: Machine }) {
   const registerRows = [];
   for (const reg of Object.keys(machine.regs)) {
     const value = machine.regs[reg];
-    const display = `0x${value.toString(16)}`;
+    const display =
+      value >= minAddress ? `0x${value.toString(16)}` : value.toString();
+    const label = reg === "zf" ? "zf" : "%" + reg;
     registerRows.push(
       <tr key={reg}>
-        <td className="label">{`%${reg}`}</td>
+        <td title={regTitles[reg]} className="label">
+          {label}
+        </td>
         <td>{display}</td>
       </tr>
     );
