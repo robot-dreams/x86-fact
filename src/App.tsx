@@ -350,7 +350,7 @@ function App() {
           </td>
         </tr>
         <tr>
-          <td colSpan={2}>
+          <td colSpan={2} id="slider">
             <input
               type="range"
               min={0}
