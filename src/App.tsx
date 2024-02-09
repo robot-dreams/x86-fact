@@ -11,7 +11,6 @@ const numStackWords = 20;
 const returnAddress = 0x1040;
 const stackTop = 0xff98;
 const minAddress = offsets[0];
-const maxHistory = 73;
 
 const regTitles: { [reg: string]: string } = {
   rip: "instruction pointer",
@@ -53,8 +52,8 @@ type Machine = {
   stackWords: number[];
 };
 
-function newMachine(): Machine {
-  return {
+const history: Machine[] = [
+  {
     regs: {
       rip: 0x1000,
       rsp: 0xff98,
@@ -64,8 +63,8 @@ function newMachine(): Machine {
       zf: 0,
     },
     stackWords: new Array(numStackWords).fill(0),
-  };
-}
+  },
+];
 
 function stackAddressToIndex(address: number) {
   return (stackTop - address) / 8 - 1;
@@ -184,6 +183,24 @@ function step(m: Machine) {
       throw new Error(`unexpected %rip: ${m.regs.rip}`);
   }
   return m;
+}
+
+function ensureHistory() {
+  for (;;) {
+    const prev = history[history.length - 1];
+    const done =
+      prev.regs.rip === offsets[offsets.length - 1] &&
+      prev.regs.rsp === stackTop;
+    if (done) {
+      return;
+    }
+    const m: Machine = {
+      regs: { ...prev.regs },
+      stackWords: [...prev.stackWords],
+    };
+    step(m);
+    history.push(m);
+  }
 }
 
 function StackRow({ machine, i }: { machine: Machine; i: number }) {
@@ -309,37 +326,10 @@ function InstructionMemory({ machine }: { machine: Machine }) {
 }
 
 function App() {
-  const [history, setHistory] = useState([newMachine()]);
   const [index, setIndex] = useState(0);
+
+  ensureHistory();
   const machine = history[index];
-
-  function handleRewind() {
-    if (index > 0) {
-      setIndex(index - 1);
-    }
-  }
-
-  function extendHistory(n: number): Machine[] {
-    const newHistory = history.slice();
-    for (let i = 0; i < n; i++) {
-      const prev = newHistory[newHistory.length - 1];
-      const m: Machine = {
-        regs: { ...prev.regs },
-        stackWords: [...prev.stackWords],
-      };
-      step(m);
-      newHistory.push(m);
-    }
-    return newHistory;
-  }
-
-  function handleStep() {
-    if (index === history.length - 1) {
-      setHistory(extendHistory(1));
-    }
-    setIndex((x) => x + 1);
-  }
-
   const done =
     machine.regs.rip === offsets[offsets.length - 1] &&
     machine.regs.rsp === stackTop;
@@ -349,12 +339,12 @@ function App() {
       <tbody>
         <tr>
           <td style={{ padding: 0, textAlign: "left" }}>
-            <button disabled={history.length === 1} onClick={handleRewind}>
+            <button disabled={index === 0} onClick={() => setIndex(index - 1)}>
               Rewind
             </button>
           </td>
           <td style={{ padding: 0, textAlign: "right" }}>
-            <button disabled={done} onClick={handleStep}>
+            <button disabled={done} onClick={() => setIndex(index + 1)}>
               Step
             </button>
           </td>
@@ -364,14 +354,10 @@ function App() {
             <input
               type="range"
               min={0}
-              max={maxHistory - 1}
+              max={history.length - 1}
               value={index}
               onInput={(e) => {
                 const newIndex = Number.parseInt(e.currentTarget.value);
-                if (newIndex >= history.length) {
-                  const n = newIndex - history.length + 1;
-                  setHistory(extendHistory(n));
-                }
                 setIndex(newIndex);
               }}
               style={{ width: "100%" }}
