@@ -11,6 +11,7 @@ const numStackWords = 20;
 const returnAddress = 0x1040;
 const stackTop = 0xff98;
 const minAddress = offsets[0];
+const maxHistory = 73;
 
 const regTitles: { [reg: string]: string } = {
   rip: "instruction pointer",
@@ -309,19 +310,34 @@ function InstructionMemory({ machine }: { machine: Machine }) {
 
 function App() {
   const [history, setHistory] = useState([newMachine()]);
-  const machine = history[history.length - 1];
+  const [index, setIndex] = useState(0);
+  const machine = history[index];
 
   function handleRewind() {
-    setHistory(history.slice(0, history.length - 1));
+    if (index > 0) {
+      setIndex(index - 1);
+    }
+  }
+
+  function extendHistory(n: number): Machine[] {
+    const newHistory = history.slice();
+    for (let i = 0; i < n; i++) {
+      const prev = newHistory[newHistory.length - 1];
+      const m: Machine = {
+        regs: { ...prev.regs },
+        stackWords: [...prev.stackWords],
+      };
+      step(m);
+      newHistory.push(m);
+    }
+    return newHistory;
   }
 
   function handleStep() {
-    const m: Machine = {
-      regs: { ...machine.regs },
-      stackWords: [...machine.stackWords],
-    };
-    step(m);
-    setHistory([...history, m]);
+    if (index === history.length - 1) {
+      setHistory(extendHistory(1));
+    }
+    setIndex((x) => x + 1);
   }
 
   const done =
@@ -341,6 +357,25 @@ function App() {
             <button disabled={done} onClick={handleStep}>
               Step
             </button>
+          </td>
+        </tr>
+        <tr>
+          <td colSpan={2}>
+            <input
+              type="range"
+              min={0}
+              max={maxHistory - 1}
+              value={index}
+              onInput={(e) => {
+                const newIndex = Number.parseInt(e.currentTarget.value);
+                if (newIndex >= history.length) {
+                  const n = newIndex - history.length + 1;
+                  setHistory(extendHistory(n));
+                }
+                setIndex(newIndex);
+              }}
+              style={{ width: "100%" }}
+            />
           </td>
         </tr>
         <tr>
