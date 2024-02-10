@@ -44,7 +44,6 @@ const instructions = [
 
 type Registers = {
   [reg: string]: number;
-  // TODO: Add rflags
 };
 
 type Machine = {
