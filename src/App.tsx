@@ -42,14 +42,16 @@ const instructions = [
   "retq",
 ];
 
+type Register = "rip" | "rsp" | "rdi" | "rax" | "rcx" | "zf";
+
 type Registers = {
-  [reg: string]: number;
+  [reg in Register]: number;
 };
 
 type Machine = {
   regs: Registers;
   stackWords: number[];
-  changedReg: string[];
+  changedReg: Register[];
   changedStack?: number;
 };
 
@@ -287,7 +289,8 @@ function StackMemory({ machine }: { machine: Machine }) {
 
 function Registers({ machine }: { machine: Machine }) {
   const registerRows = [];
-  for (const reg of Object.keys(machine.regs)) {
+  for (const key of Object.keys(machine.regs)) {
+    const reg = key as Register;
     const label = reg === "zf" ? "zf" : "%" + reg;
     const wordStyle: React.CSSProperties = {};
     if (machine.changedReg.indexOf(reg) !== -1) {
