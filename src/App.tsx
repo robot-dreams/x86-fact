@@ -49,6 +49,8 @@ type Registers = {
 type Machine = {
   regs: Registers;
   stackWords: number[];
+  changedReg: string[];
+  changedStack?: number;
 };
 
 const history: Machine[] = [
@@ -62,8 +64,14 @@ const history: Machine[] = [
       zf: 0,
     },
     stackWords: new Array(numStackWords).fill(0),
+    changedReg: [],
   },
 ];
+
+function highlightChanged(style: React.CSSProperties) {
+  // https://colorcodefinder.com/colors/highlighter
+  style.backgroundColor = "#ffe536";
+}
 
 function stackAddressToIndex(address: number) {
   return (stackTop - address) / 8 - 1;
@@ -77,14 +85,20 @@ function getStackWord(m: Machine, address: number) {
 function setStackWord(m: Machine, address: number, value: number) {
   const i = stackAddressToIndex(address);
   m.stackWords[i] = value;
+  m.changedStack = address;
 }
 
 function step(m: Machine) {
+  m.changedReg = [];
+  delete m.changedStack;
+
   switch (m.regs.rip) {
     case 0x1000:
       m.regs.rsp -= 0x18;
       m.regs.zf = m.regs.rsp === 0 ? 1 : 0;
       m.regs.rip = 0x1004;
+      m.changedReg.push("rsp");
+      m.changedReg.push("zf");
       break;
 
     case 0x1004:
@@ -117,22 +131,26 @@ function step(m: Machine) {
     case 0x1023:
       m.regs.rax = getStackWord(m, m.regs.rsp + 0x8);
       m.regs.rip = 0x1028;
+      m.changedReg.push("rax");
       break;
 
     case 0x1028:
       m.regs.rcx = getStackWord(m, m.regs.rsp + 0x8);
       m.regs.rip = 0x102d;
+      m.changedReg.push("rcx");
       break;
 
     case 0x102d:
       m.regs.rcx -= 0x1;
       m.regs.zf = m.regs.rcx === 0 ? 1 : 0;
       m.regs.rip = 0x1034;
+      m.changedReg.push("rcx");
       break;
 
     case 0x1034:
       m.regs.rdi = m.regs.rcx;
       m.regs.rip = 0x1037;
+      m.changedReg.push("rdi");
       break;
 
     case 0x1037:
@@ -145,16 +163,19 @@ function step(m: Machine) {
       m.regs.rsp -= 0x8;
       setStackWord(m, m.regs.rsp, returnAddress);
       m.regs.rip = 0x1000;
+      m.changedReg.push("rsp");
       break;
 
     case 0x1040:
       m.regs.rcx = getStackWord(m, m.regs.rsp);
       m.regs.rip = 0x1044;
+      m.changedReg.push("rcx");
       break;
 
     case 0x1044:
       m.regs.rcx *= m.regs.rax;
       m.regs.rip = 0x1048;
+      m.changedReg.push("rcx");
       break;
 
     case 0x1048:
@@ -165,17 +186,21 @@ function step(m: Machine) {
     case 0x104d:
       m.regs.rax = getStackWord(m, m.regs.rsp + 0x10);
       m.regs.rip = 0x1052;
+      m.changedReg.push("rax");
       break;
 
     case 0x1052:
       m.regs.rsp += 0x18;
       m.regs.zf = m.regs.rsp === 0 ? 1 : 0;
       m.regs.rip = 0x1056;
+      m.changedReg.push("rsp");
+      m.changedReg.push("zf");
       break;
 
     case 0x1056:
       m.regs.rip = getStackWord(m, m.regs.rsp);
       m.regs.rsp += 0x8;
+      m.changedReg.push("rsp");
       break;
 
     default:
@@ -196,6 +221,7 @@ function ensureHistory() {
     const m: Machine = {
       regs: { ...prev.regs },
       stackWords: [...prev.stackWords],
+      changedReg: [],
     };
     step(m);
     history.push(m);
@@ -211,10 +237,14 @@ function StackRow({ machine, i }: { machine: Machine; i: number }) {
       : word >= minAddress
       ? `0x${word.toString(16)}`
       : word.toString();
-  const wordStyle =
-    address < machine.regs.rsp
-      ? { backgroundColor: "ghostwhite", color: "lightgray" }
-      : {};
+  const wordStyle: React.CSSProperties = {};
+  if (address < machine.regs.rsp) {
+    wordStyle.backgroundColor = "ghostwhite";
+    wordStyle.color = "lightgray";
+  }
+  if (address === machine.changedStack) {
+    highlightChanged(wordStyle);
+  }
   return (
     <tr>
       <td className="label">{`0x${address.toString(16)}`}</td>
@@ -258,16 +288,20 @@ function StackMemory({ machine }: { machine: Machine }) {
 function Registers({ machine }: { machine: Machine }) {
   const registerRows = [];
   for (const reg of Object.keys(machine.regs)) {
+    const label = reg === "zf" ? "zf" : "%" + reg;
+    const wordStyle: React.CSSProperties = {};
+    if (machine.changedReg.indexOf(reg) !== -1) {
+      highlightChanged(wordStyle);
+    }
     const value = machine.regs[reg];
     const display =
       value >= minAddress ? `0x${value.toString(16)}` : value.toString();
-    const label = reg === "zf" ? "zf" : "%" + reg;
     registerRows.push(
       <tr key={reg}>
         <td title={regTitles[reg]} className="label">
           {label}
         </td>
-        <td>{display}</td>
+        <td style={wordStyle}>{display}</td>
       </tr>
     );
   }
