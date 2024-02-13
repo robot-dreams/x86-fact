@@ -71,8 +71,7 @@ const history: Machine[] = [
 ];
 
 function highlightChanged(style: React.CSSProperties) {
-  // https://colorcodefinder.com/colors/highlighter
-  style.backgroundColor = "#ffe536";
+  style.fontWeight = "bold";
 }
 
 function stackAddressToIndex(address: number) {
