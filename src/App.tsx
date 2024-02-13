@@ -229,73 +229,6 @@ function ensureHistory() {
   }
 }
 
-const StackMemory = forwardRef(function (
-  { machine }: { machine: Machine },
-  ref: React.ForwardedRef<HTMLTableDataCellElement>
-) {
-  const [reverse, setReverse] = useState(false);
-  const stackRows = [];
-  for (let i = 0; i < numStackWords; i++) {
-    const address = stackTop - 8 * i;
-    const word = machine.stackWords[i - 1];
-    const display =
-      i === 0
-        ? "(return address)"
-        : word >= minAddress
-        ? `0x${word.toString(16)}`
-        : word.toString();
-    const wordStyle: React.CSSProperties = {};
-    if (address < machine.regs.rsp) {
-      wordStyle.backgroundColor = "ghostwhite";
-      wordStyle.color = "lightgray";
-    }
-    if (address === machine.changedStack) {
-      highlightChanged(wordStyle);
-    }
-    if (address === machine.regs.rsp) {
-      wordStyle.outline = "1px solid gray";
-      stackRows.push(
-        <tr key={i}>
-          <td className="label">{`0x${address.toString(16)}`}</td>
-          <td style={wordStyle} ref={ref}>
-            {display}
-          </td>
-        </tr>
-      );
-    } else {
-      stackRows.push(
-        <tr key={i}>
-          <td className="label">{`0x${address.toString(16)}`}</td>
-          <td style={wordStyle}>{display}</td>
-        </tr>
-      );
-    }
-  }
-  if (reverse) {
-    stackRows.reverse();
-  }
-  return (
-    <table cellPadding={8} cellSpacing={0}>
-      <thead>
-        <tr>
-          <th colSpan={2}>
-            Stack Memory{" "}
-            <button
-              style={{ padding: 0 }}
-              onClick={() => {
-                setReverse(!reverse);
-              }}
-            >
-              &nbsp;&#x21D5;&nbsp;
-            </button>
-          </th>
-        </tr>
-      </thead>
-      <tbody>{stackRows}</tbody>
-    </table>
-  );
-});
-
 const RegisterTable = forwardRef(function (
   { machine }: { machine: Machine },
   ref: React.ForwardedRef<HTMLTableDataCellElement>
@@ -312,17 +245,15 @@ const RegisterTable = forwardRef(function (
     const display =
       value >= minAddress ? `0x${value.toString(16)}` : value.toString();
     if (reg === "rsp") {
+      wordStyle.outline = "1px solid gray";
       registerRows.push(
         <tr key={reg}>
-          <td
-            title={regTitles[reg]}
-            className="label"
-            ref={ref}
-            style={{ outline: "1px solid gray" }}
-          >
+          <td title={regTitles[reg]} className="label">
             {label}
           </td>
-          <td style={wordStyle}>{display}</td>
+          <td style={wordStyle} ref={ref}>
+            {display}
+          </td>
         </tr>
       );
     } else {
@@ -388,8 +319,84 @@ function InstructionMemory({ machine }: { machine: Machine }) {
   );
 }
 
+const StackMemory = forwardRef(function (
+  {
+    machine,
+    reverse,
+    setReverse,
+  }: {
+    machine: Machine;
+    reverse: boolean;
+    setReverse: (newReverse: boolean) => void;
+  },
+  ref: React.ForwardedRef<HTMLTableDataCellElement>
+) {
+  const stackRows = [];
+  for (let i = 0; i < numStackWords; i++) {
+    const address = stackTop - 8 * i;
+    const word = machine.stackWords[i - 1];
+    const display =
+      i === 0
+        ? "(return address)"
+        : word >= minAddress
+        ? `0x${word.toString(16)}`
+        : word.toString();
+    const wordStyle: React.CSSProperties = {};
+    if (address < machine.regs.rsp) {
+      wordStyle.backgroundColor = "ghostwhite";
+      wordStyle.color = "lightgray";
+    }
+    if (address === machine.changedStack) {
+      highlightChanged(wordStyle);
+    }
+    if (address === machine.regs.rsp) {
+      stackRows.push(
+        <tr key={i}>
+          <td
+            className="label"
+            style={{ outline: "1px solid gray" }}
+            ref={ref}
+          >{`0x${address.toString(16)}`}</td>
+          <td style={wordStyle}>{display}</td>
+        </tr>
+      );
+    } else {
+      stackRows.push(
+        <tr key={i}>
+          <td className="label">{`0x${address.toString(16)}`}</td>
+          <td style={wordStyle}>{display}</td>
+        </tr>
+      );
+    }
+  }
+  if (reverse) {
+    stackRows.reverse();
+  }
+  return (
+    <table cellPadding={8} cellSpacing={0}>
+      <thead>
+        <tr>
+          <th colSpan={2}>
+            Stack Memory{" "}
+            <button
+              style={{ padding: 0 }}
+              onClick={() => {
+                setReverse(!reverse);
+              }}
+            >
+              &nbsp;&#x21D5;&nbsp;
+            </button>
+          </th>
+        </tr>
+      </thead>
+      <tbody>{stackRows}</tbody>
+    </table>
+  );
+});
+
 function App() {
   const [index, setIndex] = useState(0);
+  const [reverse, setReverse] = useState(false);
   const line1Ref: React.MutableRefObject<HTMLDivElement | null> = useRef(null);
   const line2Ref: React.MutableRefObject<HTMLDivElement | null> = useRef(null);
   const line3Ref: React.MutableRefObject<HTMLDivElement | null> = useRef(null);
@@ -419,11 +426,11 @@ function App() {
         const rspRect = rspRef.current.getBoundingClientRect();
         const stackTopRect = stackTopRef.current.getBoundingClientRect();
 
-        const x0 = rspRect.left;
-        const y0 = rspRect.top + rspRect.height / 2;
+        const x0 = stackTopRect.left;
+        const y0 = stackTopRect.top + stackTopRect.height / 2;
 
-        const x3 = stackTopRect.left + stackTopRect.width;
-        const y3 = stackTopRect.top + stackTopRect.height / 2;
+        const x3 = rspRect.left + rspRect.width;
+        const y3 = rspRect.top + rspRect.height / 2;
 
         const x1 = (x0 + x3) / 2;
         const y1 = y0;
@@ -489,11 +496,16 @@ function App() {
             </td>
           </tr>
           <tr>
-            <td rowSpan={2}>
-              <StackMemory machine={machine} ref={stackTopRef} />
-            </td>
             <td style={{ verticalAlign: "top" }}>
               <RegisterTable machine={machine} ref={rspRef} />
+            </td>
+            <td rowSpan={2}>
+              <StackMemory
+                machine={machine}
+                ref={stackTopRef}
+                reverse={reverse}
+                setReverse={setReverse}
+              />
             </td>
           </tr>
           <tr>
