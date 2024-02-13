@@ -13,6 +13,11 @@
   padding-right: 10px;
 }
 
+.line {
+  position: absolute;
+  background-color: gray;
+}
+
 #slider {
   padding: 0px;
 }

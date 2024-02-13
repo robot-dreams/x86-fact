@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { forwardRef, useLayoutEffect, useRef, useState } from "react";
 import "./App.css";
 
 const offsets = [
@@ -230,37 +230,47 @@ function ensureHistory() {
   }
 }
 
-function StackRow({ machine, i }: { machine: Machine; i: number }) {
-  const address = stackTop - 8 * i;
-  const word = machine.stackWords[i - 1];
-  const display =
-    i === 0
-      ? "(return address)"
-      : word >= minAddress
-      ? `0x${word.toString(16)}`
-      : word.toString();
-  const wordStyle: React.CSSProperties = {};
-  if (address < machine.regs.rsp) {
-    wordStyle.backgroundColor = "ghostwhite";
-    wordStyle.color = "lightgray";
-  }
-  if (address === machine.changedStack) {
-    highlightChanged(wordStyle);
-  }
-  return (
-    <tr>
-      <td className="label">{`0x${address.toString(16)}`}</td>
-      <td style={wordStyle}>{display}</td>
-      <td className="label">{address === machine.regs.rsp && "<- %rsp"}</td>
-    </tr>
-  );
-}
-
-function StackMemory({ machine }: { machine: Machine }) {
+const StackMemory = forwardRef(function (
+  { machine }: { machine: Machine },
+  ref: React.ForwardedRef<HTMLTableDataCellElement>
+) {
   const [reverse, setReverse] = useState(false);
   const stackRows = [];
   for (let i = 0; i < numStackWords; i++) {
-    stackRows.push(<StackRow key={i} machine={machine} i={i} />);
+    const address = stackTop - 8 * i;
+    const word = machine.stackWords[i - 1];
+    const display =
+      i === 0
+        ? "(return address)"
+        : word >= minAddress
+        ? `0x${word.toString(16)}`
+        : word.toString();
+    const wordStyle: React.CSSProperties = {};
+    if (address < machine.regs.rsp) {
+      wordStyle.backgroundColor = "ghostwhite";
+      wordStyle.color = "lightgray";
+    }
+    if (address === machine.changedStack) {
+      highlightChanged(wordStyle);
+    }
+    if (address === machine.regs.rsp) {
+      wordStyle.outline = "1px solid gray";
+      stackRows.push(
+        <tr key={i}>
+          <td className="label">{`0x${address.toString(16)}`}</td>
+          <td style={wordStyle} ref={ref}>
+            {display}
+          </td>
+        </tr>
+      );
+    } else {
+      stackRows.push(
+        <tr key={i}>
+          <td className="label">{`0x${address.toString(16)}`}</td>
+          <td style={wordStyle}>{display}</td>
+        </tr>
+      );
+    }
   }
   if (reverse) {
     stackRows.reverse();
@@ -269,7 +279,7 @@ function StackMemory({ machine }: { machine: Machine }) {
     <table cellPadding={8} cellSpacing={0}>
       <thead>
         <tr>
-          <th colSpan={3}>
+          <th colSpan={2}>
             Stack Memory{" "}
             <button
               style={{ padding: 0 }}
@@ -285,9 +295,12 @@ function StackMemory({ machine }: { machine: Machine }) {
       <tbody>{stackRows}</tbody>
     </table>
   );
-}
+});
 
-function Registers({ machine }: { machine: Machine }) {
+const RegisterTable = forwardRef(function (
+  { machine }: { machine: Machine },
+  ref: React.ForwardedRef<HTMLTableDataCellElement>
+) {
   const registerRows = [];
   for (const key of Object.keys(machine.regs)) {
     const reg = key as Register;
@@ -299,14 +312,30 @@ function Registers({ machine }: { machine: Machine }) {
     const value = machine.regs[reg];
     const display =
       value >= minAddress ? `0x${value.toString(16)}` : value.toString();
-    registerRows.push(
-      <tr key={reg}>
-        <td title={regTitles[reg]} className="label">
-          {label}
-        </td>
-        <td style={wordStyle}>{display}</td>
-      </tr>
-    );
+    if (reg === "rsp") {
+      registerRows.push(
+        <tr key={reg}>
+          <td
+            title={regTitles[reg]}
+            className="label"
+            ref={ref}
+            style={{ outline: "1px solid gray" }}
+          >
+            {label}
+          </td>
+          <td style={wordStyle}>{display}</td>
+        </tr>
+      );
+    } else {
+      registerRows.push(
+        <tr key={reg}>
+          <td title={regTitles[reg]} className="label">
+            {label}
+          </td>
+          <td style={wordStyle}>{display}</td>
+        </tr>
+      );
+    }
   }
   return (
     <table cellPadding={8} cellSpacing={0} width={"100%"}>
@@ -318,7 +347,7 @@ function Registers({ machine }: { machine: Machine }) {
       <tbody>{registerRows}</tbody>
     </table>
   );
-}
+});
 
 function InstructionRow({ machine, i }: { machine: Machine; i: number }) {
   const address = offsets[i];
@@ -332,7 +361,6 @@ function InstructionRow({ machine, i }: { machine: Machine; i: number }) {
       <td style={instructionStyle}>
         <pre style={{ display: "inline" }}>{instructions[i]}</pre>
       </td>
-      <td className="label">{isNext && "<- %rip"}</td>
     </tr>
   );
 }
@@ -346,7 +374,7 @@ function InstructionMemory({ machine }: { machine: Machine }) {
     <table cellSpacing={0}>
       <thead>
         <tr>
-          <th colSpan={3}>Instruction Memory</th>
+          <th colSpan={2}>Instruction Memory</th>
         </tr>
       </thead>
       <tbody style={{ textAlign: "left" }}>
@@ -363,6 +391,13 @@ function InstructionMemory({ machine }: { machine: Machine }) {
 
 function App() {
   const [index, setIndex] = useState(0);
+  const line1Ref: React.MutableRefObject<HTMLDivElement | null> = useRef(null);
+  const line2Ref: React.MutableRefObject<HTMLDivElement | null> = useRef(null);
+  const line3Ref: React.MutableRefObject<HTMLDivElement | null> = useRef(null);
+  const rspRef: React.MutableRefObject<HTMLTableDataCellElement | null> =
+    useRef(null);
+  const stackTopRef: React.MutableRefObject<HTMLTableDataCellElement | null> =
+    useRef(null);
 
   ensureHistory();
   const machine = history[index];
@@ -370,51 +405,109 @@ function App() {
     machine.regs.rip === offsets[offsets.length - 1] &&
     machine.regs.rsp === stackTop;
 
+  useLayoutEffect(() => {
+    function recalculate() {
+      if (
+        line1Ref.current !== null &&
+        line2Ref.current !== null &&
+        line3Ref.current !== null &&
+        rspRef.current !== null &&
+        stackTopRef.current !== null
+      ) {
+        const line1 = line1Ref.current;
+        const line2 = line2Ref.current;
+        const line3 = line3Ref.current;
+        const rspRect = rspRef.current.getBoundingClientRect();
+        const stackTopRect = stackTopRef.current.getBoundingClientRect();
+
+        const x0 = rspRect.left;
+        const y0 = rspRect.top + rspRect.height / 2;
+
+        const x3 = stackTopRect.left + stackTopRect.width;
+        const y3 = stackTopRect.top + stackTopRect.height / 2;
+
+        const x1 = (x0 + x3) / 2;
+        const y1 = y0;
+
+        const x2 = x1;
+        const y2 = y3;
+
+        line1.style.width = Math.abs(x1 - x0) + "px";
+        line1.style.height = "1px";
+        line1.style.left = x1 + "px";
+        line1.style.top = y1 + "px";
+
+        line2.style.width = "1px";
+        line2.style.height = Math.abs(y2 - y1) + "px";
+        line2.style.left = x2 + "px";
+        line2.style.top = Math.min(y1, y2) + "px";
+
+        line3.style.width = 1 + Math.abs(x3 - x2) + "px";
+        line3.style.height = "1px";
+        line3.style.left = x3 + "px";
+        line3.style.top = y3 + "px";
+      }
+    }
+    recalculate();
+    window.addEventListener("resize", recalculate);
+    return () => {
+      window.removeEventListener("resize", recalculate);
+    };
+  });
+
   return (
-    <table cellPadding={20}>
-      <tbody>
-        <tr>
-          <td style={{ padding: 0, textAlign: "left" }}>
-            <button disabled={index === 0} onClick={() => setIndex(index - 1)}>
-              Rewind
-            </button>
-          </td>
-          <td style={{ padding: 0, textAlign: "right" }}>
-            <button disabled={done} onClick={() => setIndex(index + 1)}>
-              Step
-            </button>
-          </td>
-        </tr>
-        <tr>
-          <td colSpan={2} id="slider">
-            <input
-              type="range"
-              min={0}
-              max={history.length - 1}
-              value={index}
-              onInput={(e) => {
-                const newIndex = Number.parseInt(e.currentTarget.value);
-                setIndex(newIndex);
-              }}
-              style={{ width: "100%" }}
-            />
-          </td>
-        </tr>
-        <tr>
-          <td rowSpan={2}>
-            <StackMemory machine={machine} />
-          </td>
-          <td style={{ verticalAlign: "top" }}>
-            <Registers machine={machine} />
-          </td>
-        </tr>
-        <tr>
-          <td style={{ verticalAlign: "bottom" }}>
-            <InstructionMemory machine={machine} />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <>
+      <table cellPadding={20}>
+        <tbody>
+          <tr>
+            <td style={{ padding: 0, textAlign: "left" }}>
+              <button
+                disabled={index === 0}
+                onClick={() => setIndex(index - 1)}
+              >
+                Rewind
+              </button>
+            </td>
+            <td style={{ padding: 0, textAlign: "right" }}>
+              <button disabled={done} onClick={() => setIndex(index + 1)}>
+                Step
+              </button>
+            </td>
+          </tr>
+          <tr>
+            <td colSpan={2} id="slider">
+              <input
+                type="range"
+                min={0}
+                max={history.length - 1}
+                value={index}
+                onInput={(e) => {
+                  const newIndex = Number.parseInt(e.currentTarget.value);
+                  setIndex(newIndex);
+                }}
+                style={{ width: "100%" }}
+              />
+            </td>
+          </tr>
+          <tr>
+            <td rowSpan={2}>
+              <StackMemory machine={machine} ref={stackTopRef} />
+            </td>
+            <td style={{ verticalAlign: "top" }}>
+              <RegisterTable machine={machine} ref={rspRef} />
+            </td>
+          </tr>
+          <tr>
+            <td style={{ verticalAlign: "bottom" }}>
+              <InstructionMemory machine={machine} />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div className="line" ref={line1Ref}></div>
+      <div className="line" ref={line2Ref}></div>
+      <div className="line" ref={line3Ref}></div>
+    </>
   );
 }
 
